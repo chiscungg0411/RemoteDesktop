@@ -1,0 +1,43 @@
+﻿<Window x:Class="RemoteDesktopClient.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Remote Desktop Client" 
+        SizeToContent="WidthAndHeight"
+        MinHeight="450"
+        MinWidth="600"
+        ResizeMode="CanResizeWithGrip">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <!-- Thanh công cụ -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+            <Label Content="Server IP:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <TextBox x:Name="txtServerIP" Width="150" Text="127.0.0.1" Margin="0,0,10,0"/>
+            <Button x:Name="btnConnect" Content="Connect" Width="100" Click="BtnConnect_Click" Margin="0,0,10,0"/>
+            <Button x:Name="btnDisconnect" Content="Disconnect" Width="100" Click="BtnDisconnect_Click" IsEnabled="False"/>
+        </StackPanel>
+        <!-- Hiển thị màn hình -->
+        <Grid Grid.Row="1">
+            <Image x:Name="imageScreen"
+           Stretch="Uniform"
+           MouseLeftButtonDown="ImageScreen_MouseLeftButtonDown"
+           MouseLeftButtonUp="ImageScreen_MouseLeftButtonUp"
+           MouseRightButtonDown="ImageScreen_MouseRightButtonDown"
+           MouseRightButtonUp="ImageScreen_MouseRightButtonUp"
+           MouseMove="ImageScreen_MouseMove"
+           MouseWheel="ImageScreen_MouseWheel"
+           IsHitTestVisible="True"/>
+            <Canvas x:Name="cursorOverlay"
+            Background="Transparent"
+            IsHitTestVisible="False"/>
+        </Grid>
+        <!-- Điều khiển lệnh -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10,0,0">
+            <TextBox x:Name="txtCommand" Width="200" Margin="0,0,10,0" KeyDown="TxtCommand_KeyDown"/>
+            <Button x:Name="btnSendKey" Content="Send Key" Width="100" Click="BtnSendKey_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>
