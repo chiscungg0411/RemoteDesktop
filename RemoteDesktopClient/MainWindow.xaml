@@ -12,7 +12,6 @@
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <!-- Thanh công cụ -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
             <Label Content="Server IP:" VerticalAlignment="Center" Margin="0,0,10,0"/>
             <TextBox x:Name="txtServerIP" Width="150" Text="127.0.0.1" Margin="0,0,10,0"/>
@@ -34,7 +33,6 @@
             Background="Transparent"
             IsHitTestVisible="False"/>
         </Grid>
-        <!-- Điều khiển lệnh -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10,0,0">
             <TextBox x:Name="txtCommand" Width="200" Margin="0,0,10,0" KeyDown="TxtCommand_KeyDown"/>
             <Button x:Name="btnSendKey" Content="Send Key" Width="100" Click="BtnSendKey_Click"/>

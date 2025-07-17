@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Forms; // Chỉ dùng cho Screen
+using System.Windows.Forms;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -177,7 +177,7 @@ namespace RemoteDesktopClient
             Canvas.SetLeft(fakeCursor, position.X - fakeCursor.Width / 2);
             Canvas.SetTop(fakeCursor, position.Y - fakeCursor.Height / 2);
 
-            if (isConnected && (e.LeftButton == MouseButtonState.Pressed || e.RightButton == MouseButtonState.Pressed))
+            if (isConnected)
             {
                 try
                 {
@@ -193,13 +193,11 @@ namespace RemoteDesktopClient
                     var lengthBytes = BitConverter.GetBytes(encryptedData.Length);
                     await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
                     await stream.WriteAsync(encryptedData, 0, encryptedData.Length);
-
-                    string log = $"Di chuyển chuột đến: ({x}, {y})";
-                    await SendLogToServer("LOGMOUSE:" + log);
                 }
                 catch (Exception ex)
                 {
                     System.Windows.MessageBox.Show($"Lỗi gửi lệnh di chuyển: {ex.Message}");
+                    Disconnect();
                 }
             }
         }

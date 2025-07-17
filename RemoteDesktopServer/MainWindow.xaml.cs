@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Forms;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace RemoteDesktopServer
 {
@@ -20,8 +21,70 @@ namespace RemoteDesktopServer
         private bool isRunning = false;
         private readonly byte[] aesKey = Encoding.UTF8.GetBytes("12345678901234567890123456789012");
         private readonly byte[] aesIV = Encoding.UTF8.GetBytes("1234567890123456");
-
         private int sessionId = 0;
+
+        #region PInvoke SendInput
+        // Vùng này định nghĩa các cấu trúc và hàm SendInput để mô phỏng input
+        [DllImport("user32.dll")]
+        internal static extern uint SendInput(uint nInputs, [MarshalAs(UnmanagedType.LPArray), In] INPUT[] pInputs, int cbSize);
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct INPUT
+        {
+            public uint Type;
+            public MOUSEKEYBDHARDWAREINPUT Data;
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        internal struct MOUSEKEYBDHARDWAREINPUT
+        {
+            [FieldOffset(0)]
+            public MOUSEINPUT Mouse;
+            [FieldOffset(0)]
+            public KEYBDINPUT Keyboard;
+            [FieldOffset(0)]
+            public HARDWAREINPUT Hardware;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct MOUSEINPUT
+        {
+            public int X;
+            public int Y;
+            public uint MouseData;
+            public uint Flags;
+            public uint Time;
+            public IntPtr ExtraInfo;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct KEYBDINPUT
+        {
+            public ushort Vk;
+            public ushort Scan;
+            public uint Flags;
+            public uint Time;
+            public IntPtr ExtraInfo;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct HARDWAREINPUT
+        {
+            public uint Msg;
+            public ushort ParamL;
+            public ushort ParamH;
+        }
+
+        // Các hằng số cho SendInput
+        internal const uint INPUT_MOUSE = 0;
+        internal const uint MOUSEEVENTF_MOVE = 0x0001;
+        internal const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
+        internal const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+        internal const uint MOUSEEVENTF_LEFTUP = 0x0004;
+        internal const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
+        internal const int MOUSEEVENTF_RIGHTUP = 0x0010;
+        internal const uint MOUSEEVENTF_WHEEL = 0x0800;
+        #endregion
 
         public MainWindow()
         {
@@ -42,26 +105,24 @@ namespace RemoteDesktopServer
                 sessionId++;
                 if (stream != null)
                 {
-                    try {
+                    try
+                    {
                         byte[] disconnectData = Encoding.UTF8.GetBytes("DISCONNECT");
                         byte[] encryptedDisconnect = Encrypt(disconnectData, aesKey, aesIV);
                         var lengthBytes = BitConverter.GetBytes(encryptedDisconnect.Length);
                         stream.Write(lengthBytes, 0, lengthBytes.Length);
                         stream.Write(encryptedDisconnect, 0, encryptedDisconnect.Length);
                     }
-                    catch { 
-                    }
+                    catch { }
                     stream.Close();
                 }
                 stream = null;
                 client?.Close();
                 client = null;
-
                 listener?.Stop();
                 listener = null;
             }
-            catch { 
-            }
+            catch { }
 
             Dispatcher.Invoke(() =>
             {
@@ -86,8 +147,7 @@ namespace RemoteDesktopServer
         {
             using (var ms = new MemoryStream())
             {
-                var jpegEncoder = ImageCodecInfo.GetImageEncoders()
-                    .First(codec => codec.MimeType == "image/jpeg");
+                var jpegEncoder = ImageCodecInfo.GetImageEncoders().First(codec => codec.MimeType == "image/jpeg");
                 var encoderParameters = new EncoderParameters(1);
                 encoderParameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, quality);
                 bitmap.Save(ms, jpegEncoder, encoderParameters);
@@ -136,26 +196,20 @@ namespace RemoteDesktopServer
                         client = await listener.AcceptTcpClientAsync();
                         if (!isRunning || client == null) break;
                         stream = client.GetStream();
-
                         int thisSession = ++sessionId;
-
                         Dispatcher.Invoke(() =>
                         {
                             txtStatus.AppendText("[INFO] Client connected!\n");
                         });
-
                         var sendTask = Task.Run(() => SendScreenAsync(thisSession));
                         var recvTask = Task.Run(() => ReceiveCommandsAsync(thisSession));
-
                         await Task.WhenAny(sendTask, recvTask);
                     }
                     catch { }
-
                     try { stream?.Close(); } catch { }
                     stream = null;
                     try { client?.Close(); } catch { }
                     client = null;
-
                     Dispatcher.Invoke(() => txtStatus.AppendText("[INFO] Client disconnected or error. Waiting for new client...\n"));
                 }
             }
@@ -170,15 +224,13 @@ namespace RemoteDesktopServer
         {
             StopServer();
         }
+
         private async Task SendScreenAsync(int mySession)
         {
             try
             {
                 while (isRunning && client != null && stream != null && mySession == sessionId)
                 {
-                    if (!isRunning || stream == null || client == null || mySession != sessionId)
-                        break;
-
                     try
                     {
                         using (var bitmap = CaptureScreen())
@@ -186,34 +238,15 @@ namespace RemoteDesktopServer
                             var imageBytes = BitmapToBytes(bitmap, 50);
                             var encryptedBytes = Encrypt(imageBytes, aesKey, aesIV);
                             var lengthBytes = BitConverter.GetBytes(encryptedBytes.Length);
-
-                            if (!isRunning || stream == null || client == null || mySession != sessionId)
-                                break;
-
                             await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
                             await stream.WriteAsync(encryptedBytes, 0, encryptedBytes.Length);
                         }
                         await Task.Delay(100);
                     }
-                    catch (Exception ex)
-                    {
-                        Dispatcher.Invoke(() =>
-                        {
-                            txtStatus.AppendText("[INFO] Stop sending screen: " + ex.Message + "\n");
-                            txtStatus.ScrollToEnd();
-                        });
-                        break;
-                    }
+                    catch { break; }
                 }
             }
-            catch (Exception ex)
-            {
-                Dispatcher.Invoke(() =>
-                {
-                    txtStatus.AppendText("[ERROR] Gửi màn hình - outer: " + ex.Message + "\n");
-                    txtStatus.ScrollToEnd();
-                });
-            }
+            catch { }
         }
 
         private async Task ReceiveCommandsAsync(int mySession)
@@ -228,18 +261,10 @@ namespace RemoteDesktopServer
                     {
                         bytesRead = await stream.ReadAsync(buffer, 0, 4);
                     }
-                    catch (Exception ex)
-                    {
-                        Dispatcher.Invoke(() => {
-                            txtStatus.AppendText($"[ERROR] Lỗi nhận stream: {ex.Message}\n");
-                            txtStatus.ScrollToEnd();
-                        });
-                        break;
-                    }
+                    catch { break; }
 
-                    if (bytesRead == 0 || mySession != sessionId) break;
+                    if (bytesRead == 0) break;
                     int length = BitConverter.ToInt32(buffer, 0);
-
                     var data = new byte[length];
                     int totalRead = 0;
                     while (totalRead < length)
@@ -248,133 +273,82 @@ namespace RemoteDesktopServer
                         {
                             bytesRead = await stream.ReadAsync(data, totalRead, length - totalRead);
                         }
-                        catch (Exception ex)
-                        {
-                            Dispatcher.Invoke(() => {
-                                txtStatus.AppendText($"[ERROR] Lỗi nhận luồng command: {ex.Message}\n");
-                                txtStatus.ScrollToEnd();
-                            });
-                            break;
-                        }
-
-                        if (bytesRead == 0 || mySession != sessionId) break;
+                        catch { break; }
+                        if (bytesRead == 0) break;
                         totalRead += bytesRead;
                     }
-
-                    if (totalRead < length || mySession != sessionId) break;
-
+                    if (totalRead < length) break;
                     var decryptedData = Decrypt(data, aesKey, aesIV);
                     var command = Encoding.UTF8.GetString(decryptedData);
-
                     HandleCommand(command);
                 }
+            }
+            catch { }
+        }
+
+        private void HandleCommand(string command)
+        {
+            try
+            {
+                string[] parts = command.Split(':');
+                string action = parts[0];
+                string[] values = parts.Length > 1 ? parts[1].Split(',') : new string[0];
+
+                INPUT[] inputs = new INPUT[1];
+                inputs[0].Type = INPUT_MOUSE;
+
+                switch (action)
+                {
+                    case "MOVE":
+                        int x = int.Parse(values[0]);
+                        int y = int.Parse(values[1]);
+                        int screenWidth = Screen.PrimaryScreen.Bounds.Width;
+                        int screenHeight = Screen.PrimaryScreen.Bounds.Height;
+                        inputs[0].Data.Mouse.X = (x * 65535) / screenWidth;
+                        inputs[0].Data.Mouse.Y = (y * 65535) / screenHeight;
+                        inputs[0].Data.Mouse.Flags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
+                        SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
+                        break;
+
+                    case "LCLICK":
+                        inputs[0].Data.Mouse.Flags = MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP;
+                        SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
+                        break;
+
+                    case "RCLICK":
+                        inputs[0].Data.Mouse.Flags = MOUSEEVENTF_RIGHTDOWN | MOUSEEVENTF_RIGHTUP;
+                        SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
+                        break;
+
+                    case "SCROLL":
+                        string direction = values[0];
+                        int amount = int.Parse(values[1]);
+                        int delta = direction == "up" ? amount : -amount;
+                        inputs[0].Data.Mouse.MouseData = (uint)delta;
+                        inputs[0].Data.Mouse.Flags = MOUSEEVENTF_WHEEL;
+                        SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
+                        break;
+
+                    case "KEY":
+                        string keyStr = parts[1];
+                        SendKeys.SendWait(keyStr);
+                        break;
+
+                }
+
+                Dispatcher.Invoke(() =>
+                {
+                    string nowStr = DateTime.Now.ToString("HH:mm:ss");
+                    txtStatus.AppendText($"[{nowStr}] Executed: {command}\n");
+                    txtStatus.ScrollToEnd();
+                });
             }
             catch (Exception ex)
             {
                 Dispatcher.Invoke(() =>
                 {
-                    txtStatus.AppendText($"[ERROR] Lỗi nền nhận lệnh: {ex.Message}\n");
-                    txtStatus.ScrollToEnd();
-                });
-            }
-        }
-
-        private void HandleCommand(string command)
-        {
-            string NowStr() => DateTime.Now.ToString("HH:mm:ss");
-
-            if (command.StartsWith("MOVE:"))
-            {
-                var parts = command.Substring(5).Split(',');
-                int x = int.Parse(parts[0]);
-                int y = int.Parse(parts[1]);
-                Dispatcher.Invoke(() =>
-                {
-                    txtStatus.AppendText($"[{NowStr()}] Chuột di chuyển đến: ({x}, {y})\n");
-                    txtStatus.ScrollToEnd();
-                });
-            }
-            else if (command.StartsWith("LCLICK:"))
-            {
-                var parts = command.Substring(7).Split(',');
-                int x = int.Parse(parts[0]);
-                int y = int.Parse(parts[1]);
-                Dispatcher.Invoke(() =>
-                {
-                    txtStatus.AppendText($"[{NowStr()}] Nhấp trái tại: ({x}, {y})\n");
-                    txtStatus.ScrollToEnd();
-                });
-            }
-            else if (command.StartsWith("LRELEASE:"))
-            {
-                var parts = command.Substring(9).Split(',');
-                int x = int.Parse(parts[0]);
-                int y = int.Parse(parts[1]);
-                Dispatcher.Invoke(() =>
-                {
-                    txtStatus.AppendText($"[{NowStr()}] Thả trái tại: ({x}, {y})\n");
-                    txtStatus.ScrollToEnd();
-                });
-            }
-            else if (command.StartsWith("RCLICK:"))
-            {
-                var parts = command.Substring(7).Split(',');
-                int x = int.Parse(parts[0]);
-                int y = int.Parse(parts[1]);
-                Dispatcher.Invoke(() =>
-                {
-                    txtStatus.AppendText($"[{NowStr()}] Nhấp phải tại: ({x}, {y})\n");
-                    txtStatus.ScrollToEnd();
-                });
-            }
-            else if (command.StartsWith("RRELEASE:"))
-            {
-                var parts = command.Substring(9).Split(',');
-                int x = int.Parse(parts[0]);
-                int y = int.Parse(parts[1]);
-                Dispatcher.Invoke(() =>
-                {
-                    txtStatus.AppendText($"[{NowStr()}] Thả phải tại: ({x}, {y})\n");
-                    txtStatus.ScrollToEnd();
-                });
-            }
-            else if (command.StartsWith("SCROLL:"))
-            {
-                var parts = command.Substring(7).Split(',');
-                string direction = parts[0];
-                int amount = int.Parse(parts[1]);
-                int x = int.Parse(parts[2]);
-                int y = int.Parse(parts[3]);
-                Dispatcher.Invoke(() =>
-                {
-                    txtStatus.AppendText($"[{NowStr()}] Cuộn {direction} với {amount} pixels tại: ({x}, {y})\n");
-                    txtStatus.ScrollToEnd();
-                });
-            }
-            else if (command.StartsWith("KEY:"))
-            {
-                string keyStr = command.Substring(4);
-                Dispatcher.Invoke(() =>
-                {
-                    txtStatus.AppendText($"[{NowStr()}] Phím gửi: {keyStr}\n");
-                    txtStatus.ScrollToEnd();
-                });
-            }
-            else if (command.StartsWith("LOGMOUSE:"))
-            {
-                string log = command.Substring(9);
-                Dispatcher.Invoke(() =>
-                {
-                    txtStatus.AppendText($"[{NowStr()}] Log chuột từ client: {log}\n");
-                    txtStatus.ScrollToEnd();
-                });
-            }
-            else if (command.StartsWith("LOGKEY:"))
-            {
-                string log = command.Substring(7);
-                Dispatcher.Invoke(() =>
-                {
-                    txtStatus.AppendText($"[{NowStr()}] Log phím từ client: {log}\n");
+                    string nowStr = DateTime.Now.ToString("HH:mm:ss");
+                    txtStatus.AppendText($"[{nowStr}] Error executing '{command}': {ex.Message}\n");
                     txtStatus.ScrollToEnd();
                 });
             }

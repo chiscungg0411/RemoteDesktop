@@ -5,17 +5,15 @@
     <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <!-- Thanh công cụ -->
             <RowDefinition Height="*"/>
-            <!-- Trạng thái -->
         </Grid.RowDefinitions>
-        <!-- Thanh công cụ -->
+        
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
             <Button x:Name="btnStart" Content="Start Server" Width="100" Click="BtnStart_Click" Margin="0,0,10,0"/>
             <Button x:Name="btnStop" Content="Stop Server" Width="100" Click="BtnStop_Click" IsEnabled="False"/>
             <Button x:Name="btnTestCapture" Content="Test Capture" Width="100" Click="BtnTestCapture_Click"/>
         </StackPanel>
-        <!-- Trạng thái -->
+
         <TextBox x:Name="txtStatus" Grid.Row="1" IsReadOnly="True" 
          VerticalScrollBarVisibility="Auto" 
          AcceptsReturn="True"
