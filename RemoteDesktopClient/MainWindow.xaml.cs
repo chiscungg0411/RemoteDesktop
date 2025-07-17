@@ -11,6 +11,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using System.Threading;
 
 namespace RemoteDesktopClient
 {
@@ -21,8 +22,12 @@ namespace RemoteDesktopClient
         private bool isConnected = false;
         private readonly byte[] aesKey = Encoding.UTF8.GetBytes("12345678901234567890123456789012");
         private readonly byte[] aesIV = Encoding.UTF8.GetBytes("1234567890123456");
-        private bool isDragging = false;
         private Ellipse fakeCursor;
+
+        private System.Timers.Timer inputTimer;
+        private System.Windows.Point lastMousePosition;
+        private volatile bool isMousePositionChanged = false;
+        private volatile int scrollDeltaAccumulator = 0;
 
         public MainWindow()
         {
@@ -41,6 +46,49 @@ namespace RemoteDesktopClient
             Canvas.SetTop(fakeCursor, -100);
 
             imageScreen.SizeChanged += ImageScreen_SizeChanged;
+
+            inputTimer = new System.Timers.Timer(50);
+            inputTimer.Elapsed += InputTimer_Elapsed;
+            inputTimer.AutoReset = true;
+        }
+
+        private async void InputTimer_Elapsed(object sender, System.Timers.ElapsedEventArgs e)
+        {
+            if (!isConnected) return;
+
+            if (isMousePositionChanged)
+            {
+                isMousePositionChanged = false;
+                try
+                {
+                    double scaleX = 0, scaleY = 0;
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        if (imageScreen.ActualWidth > 0) scaleX = Screen.PrimaryScreen.Bounds.Width / imageScreen.ActualWidth;
+                        if (imageScreen.ActualHeight > 0) scaleY = Screen.PrimaryScreen.Bounds.Height / imageScreen.ActualHeight;
+                    });
+
+                    if (scaleX > 0 && scaleY > 0)
+                    {
+                        int x = (int)(lastMousePosition.X * scaleX);
+                        int y = (int)(lastMousePosition.Y * scaleY);
+                        await SendCommandToServer($"MOVE:{x},{y}");
+                    }
+                }
+                catch { }
+            }
+
+            int currentScrollDelta = Interlocked.Exchange(ref scrollDeltaAccumulator, 0);
+            if (currentScrollDelta != 0)
+            {
+                try
+                {
+                    string direction = currentScrollDelta > 0 ? "up" : "down";
+                    int amount = Math.Abs(currentScrollDelta);
+                    await SendCommandToServer($"SCROLL:{direction},{amount}");
+                }
+                catch { }
+            }
         }
 
         private void ImageScreen_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -57,6 +105,9 @@ namespace RemoteDesktopClient
                 await client.ConnectAsync(txtServerIP.Text, 4000);
                 stream = client.GetStream();
                 isConnected = true;
+
+                inputTimer.Start();
+
                 Dispatcher.Invoke(() =>
                 {
                     txtServerIP.IsEnabled = false;
@@ -66,11 +117,6 @@ namespace RemoteDesktopClient
                 });
 
                 await Task.Run(() => ReceiveScreenAsync());
-            }
-            catch (SocketException ex)
-            {
-                System.Windows.MessageBox.Show($"Lỗi kết nối mạng: {ex.Message}");
-                Disconnect();
             }
             catch (Exception ex)
             {
@@ -83,6 +129,7 @@ namespace RemoteDesktopClient
         {
             if (isConnected)
             {
+                inputTimer.Stop();
                 isConnected = false;
                 stream?.Close();
                 client?.Close();
@@ -92,12 +139,15 @@ namespace RemoteDesktopClient
                     btnConnect.IsEnabled = true;
                     btnDisconnect.IsEnabled = false;
                     imageScreen.Source = null;
-                    System.Windows.MessageBox.Show("Disconnect thành công");
+                    if (System.Windows.Application.Current.MainWindow != null && System.Windows.Application.Current.MainWindow.IsVisible)
+                    {
+                        System.Windows.MessageBox.Show("Disconnect thành công");
+                    }
                 });
             }
         }
 
-        private async void BtnDisconnect_Click(object sender, RoutedEventArgs e)
+        private void BtnDisconnect_Click(object sender, RoutedEventArgs e)
         {
             Disconnect();
         }
@@ -110,25 +160,28 @@ namespace RemoteDesktopClient
                 try
                 {
                     int bytesRead = await stream.ReadAsync(buffer, 0, 4);
-                    if (bytesRead == 0) continue;
+                    if (bytesRead < 4) { Disconnect(); break; }
                     int length = BitConverter.ToInt32(buffer, 0);
+
+                    if (length > buffer.Length) { Disconnect(); break; }
 
                     var data = new byte[length];
                     int totalRead = 0;
                     while (totalRead < length)
                     {
                         bytesRead = await stream.ReadAsync(data, totalRead, length - totalRead);
-                        if (bytesRead == 0) break;
+                        if (bytesRead == 0) { Disconnect(); break; }
                         totalRead += bytesRead;
                     }
+                    if (totalRead < length) continue;
 
                     var decryptedData = Decrypt(data, aesKey, aesIV);
-                    string command = Encoding.UTF8.GetString(decryptedData);
+                    var command = Encoding.UTF8.GetString(decryptedData);
 
                     if (command == "DISCONNECT")
                     {
+                        Dispatcher.Invoke(() => System.Windows.MessageBox.Show("Server đã dừng, kết nối ngắt."));
                         Disconnect();
-                        Dispatcher.Invoke(() => System.Windows.MessageBox.Show("Server đã dừng, kết nối ngắt."));                       
                         break;
                     }
                     else
@@ -143,210 +196,58 @@ namespace RemoteDesktopClient
                                 bitmap.CacheOption = BitmapCacheOption.OnLoad;
                                 bitmap.EndInit();
                                 imageScreen.Source = bitmap;
-
-                                cursorOverlay.Width = imageScreen.ActualWidth;
-                                cursorOverlay.Height = imageScreen.ActualHeight;
                             });
                         }
                     }
                 }
-                catch (CryptographicException ex)
+                catch
                 {
-                    Dispatcher.Invoke(() => System.Windows.MessageBox.Show($"Lỗi mã hóa: {ex.Message}"));
-                    Disconnect();
-                    break;
-                }
-                catch (IOException)
-                {
-                    Disconnect();
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    Dispatcher.Invoke(() => System.Windows.MessageBox.Show($"Lỗi không xác định: {ex.Message}"));
                     Disconnect();
                     break;
                 }
             }
         }
 
-        private async void ImageScreen_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+        private void ImageScreen_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
         {
             System.Windows.Point position = e.GetPosition(imageScreen);
-
             Canvas.SetLeft(fakeCursor, position.X - fakeCursor.Width / 2);
             Canvas.SetTop(fakeCursor, position.Y - fakeCursor.Height / 2);
 
             if (isConnected)
             {
-                try
-                {
-                    double scaleX = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Width / imageScreen.ActualWidth;
-                    double scaleY = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Height / imageScreen.ActualHeight;
-                    int x = (int)(position.X * scaleX);
-                    int y = (int)(position.Y * scaleY);
-
-                    string command = $"MOVE:{x},{y}";
-                    byte[] data = Encoding.UTF8.GetBytes(command);
-                    byte[] encryptedData = Encrypt(data, aesKey, aesIV);
-
-                    var lengthBytes = BitConverter.GetBytes(encryptedData.Length);
-                    await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
-                    await stream.WriteAsync(encryptedData, 0, encryptedData.Length);
-                }
-                catch (Exception ex)
-                {
-                    System.Windows.MessageBox.Show($"Lỗi gửi lệnh di chuyển: {ex.Message}");
-                    Disconnect();
-                }
+                lastMousePosition = position;
+                isMousePositionChanged = true;
             }
         }
-        private async void ImageScreen_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+
+        private async void ImageScreen_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            imageScreen.Focus();
+            if (isConnected) await SendCommandToServer("LCLICK");
+        }
+
+        private async void ImageScreen_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            imageScreen.Focus();
+            if (isConnected) await SendCommandToServer("RCLICK");
+        }
+
+        private async void ImageScreen_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (isConnected) await SendCommandToServer("LRELEASE");
+        }
+
+        private async void ImageScreen_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (isConnected) await SendCommandToServer("RRELEASE");
+        }
+
+        private void ImageScreen_MouseWheel(object sender, MouseWheelEventArgs e)
         {
             if (isConnected)
             {
-                try
-                {
-                    isDragging = true;
-                    System.Windows.Point position = e.GetPosition(imageScreen);
-                    double scaleX = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Width / imageScreen.ActualWidth;
-                    double scaleY = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Height / imageScreen.ActualHeight;
-                    int x = (int)(position.X * scaleX);
-                    int y = (int)(position.Y * scaleY);
-                    string command = $"LCLICK:{x},{y}";
-                    byte[] data = Encoding.UTF8.GetBytes(command);
-                    byte[] encryptedData = Encrypt(data, aesKey, aesIV);
-
-                    var lengthBytes = BitConverter.GetBytes(encryptedData.Length);
-                    await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
-                    await stream.WriteAsync(encryptedData, 0, encryptedData.Length);
-
-                    string log = $"Nhấp trái tại: ({x}, {y})";
-                    await SendLogToServer("LOGMOUSE:" + log);
-                }
-                catch (Exception ex)
-                {
-                    System.Windows.MessageBox.Show($"Lỗi gửi lệnh nhấp trái: {ex.Message}");
-                }
-            }
-        }
-
-        private async void ImageScreen_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            if (isConnected && isDragging)
-            {
-                try
-                {
-                    isDragging = false;
-                    System.Windows.Point position = e.GetPosition(imageScreen);
-                    double scaleX = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Width / imageScreen.ActualWidth;
-                    double scaleY = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Height / imageScreen.ActualHeight;
-                    int x = (int)(position.X * scaleX);
-                    int y = (int)(position.Y * scaleY);
-                    string command = $"LRELEASE:{x},{y}";
-                    byte[] data = Encoding.UTF8.GetBytes(command);
-                    byte[] encryptedData = Encrypt(data, aesKey, aesIV);
-
-                    var lengthBytes = BitConverter.GetBytes(encryptedData.Length);
-                    await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
-                    await stream.WriteAsync(encryptedData, 0, encryptedData.Length);
-
-                    string log = $"Thả trái tại: ({x}, {y})";
-                    await SendLogToServer("LOGMOUSE:" + log);
-                }
-                catch (Exception ex)
-                {
-                    System.Windows.MessageBox.Show($"Lỗi gửi lệnh thả trái: {ex.Message}");
-                }
-            }
-        }
-
-        private async void ImageScreen_MouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            if (isConnected)
-            {
-                try
-                {
-                    System.Windows.Point position = e.GetPosition(imageScreen);
-                    double scaleX = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Width / imageScreen.ActualWidth;
-                    double scaleY = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Height / imageScreen.ActualHeight;
-                    int x = (int)(position.X * scaleX);
-                    int y = (int)(position.Y * scaleY);
-                    string command = $"RCLICK:{x},{y}";
-                    byte[] data = Encoding.UTF8.GetBytes(command);
-                    byte[] encryptedData = Encrypt(data, aesKey, aesIV);
-
-                    var lengthBytes = BitConverter.GetBytes(encryptedData.Length);
-                    await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
-                    await stream.WriteAsync(encryptedData, 0, encryptedData.Length);
-
-                    string log = $"Nhấp phải tại: ({x}, {y})";
-                    await SendLogToServer("LOGMOUSE:" + log);
-                }
-                catch (Exception ex)
-                {
-                    System.Windows.MessageBox.Show($"Lỗi gửi lệnh nhấp phải: {ex.Message}");
-                }
-            }
-        }
-
-        private async void ImageScreen_MouseRightButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            if (isConnected)
-            {
-                try
-                {
-                    System.Windows.Point position = e.GetPosition(imageScreen);
-                    double scaleX = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Width / imageScreen.ActualWidth;
-                    double scaleY = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Height / imageScreen.ActualHeight;
-                    int x = (int)(position.X * scaleX);
-                    int y = (int)(position.Y * scaleY);
-                    string command = $"RRELEASE:{x},{y}";
-                    byte[] data = Encoding.UTF8.GetBytes(command);
-                    byte[] encryptedData = Encrypt(data, aesKey, aesIV);
-
-                    var lengthBytes = BitConverter.GetBytes(encryptedData.Length);
-                    await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
-                    await stream.WriteAsync(encryptedData, 0, encryptedData.Length);
-
-                    string log = $"Thả phải tại: ({x}, {y})";
-                    await SendLogToServer("LOGMOUSE:" + log);
-                }
-                catch (Exception ex)
-                {
-                    System.Windows.MessageBox.Show($"Lỗi gửi lệnh thả phải: {ex.Message}");
-                }
-            }
-        }
-
-        private async void ImageScreen_MouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
-        {
-            if (isConnected)
-            {
-                try
-                {
-                    string direction = e.Delta > 0 ? "up" : "down";
-                    int amount = Math.Abs(e.Delta) / 10;
-                    System.Windows.Point position = e.GetPosition(imageScreen);
-                    double scaleX = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Width / imageScreen.ActualWidth;
-                    double scaleY = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Height / imageScreen.ActualHeight;
-                    int x = (int)(position.X * scaleX);
-                    int y = (int)(position.Y * scaleY);
-                    string command = $"SCROLL:{direction},{amount},{x},{y}";
-                    byte[] data = Encoding.UTF8.GetBytes(command);
-                    byte[] encryptedData = Encrypt(data, aesKey, aesIV);
-
-                    var lengthBytes = BitConverter.GetBytes(encryptedData.Length);
-                    await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
-                    await stream.WriteAsync(encryptedData, 0, encryptedData.Length);
-
-                    string log = $"Cuộn {direction} với {amount} pixels tại: ({x}, {y})";
-                    await SendLogToServer("LOGMOUSE:" + log);
-                }
-                catch (Exception ex)
-                {
-                    System.Windows.MessageBox.Show($"Lỗi gửi lệnh cuộn: {ex.Message}");
-                }
+                Interlocked.Add(ref scrollDeltaAccumulator, e.Delta);
             }
         }
 
@@ -354,25 +255,9 @@ namespace RemoteDesktopClient
         {
             if (e.Key == Key.Enter && isConnected && !string.IsNullOrEmpty(txtCommand.Text))
             {
-                try
-                {
-                    string command = $"KEY:{txtCommand.Text}";
-                    byte[] data = Encoding.UTF8.GetBytes(command);
-                    byte[] encryptedData = Encrypt(data, aesKey, aesIV);
-
-                    var lengthBytes = BitConverter.GetBytes(encryptedData.Length);
-                    await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
-                    await stream.WriteAsync(encryptedData, 0, encryptedData.Length);
-
-                    string log = $"Phím gửi: {txtCommand.Text}";
-                    await SendLogToServer("LOGKEY:" + log);
-
-                    txtCommand.Clear();
-                }
-                catch (Exception ex)
-                {
-                    System.Windows.MessageBox.Show($"Lỗi gửi lệnh phím: {ex.Message}");
-                }
+                await SendCommandToServer($"KEY:{txtCommand.Text}");
+                txtCommand.Clear();
+                MainGrid.Focus(); // CHUYỂN FOCUS VỀ GRID CHÍNH
             }
         }
 
@@ -380,45 +265,41 @@ namespace RemoteDesktopClient
         {
             if (isConnected && !string.IsNullOrEmpty(txtCommand.Text))
             {
-                try
-                {
-                    string command = $"KEY:{txtCommand.Text}";
-                    byte[] data = Encoding.UTF8.GetBytes(command);
-                    byte[] encryptedData = Encrypt(data, aesKey, aesIV);
-
-                    var lengthBytes = BitConverter.GetBytes(encryptedData.Length);
-                    await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
-                    await stream.WriteAsync(encryptedData, 0, encryptedData.Length);
-
-                    string log = $"Phím gửi: {txtCommand.Text}";
-                    await SendLogToServer("LOGKEY:" + log);
-
-                    txtCommand.Clear();
-                }
-                catch (Exception ex)
-                {
-                    System.Windows.MessageBox.Show($"Lỗi gửi lệnh phím: {ex.Message}");
-                }
+                await SendCommandToServer($"KEY:{txtCommand.Text}");
+                txtCommand.Clear();
+                MainGrid.Focus(); // CHUYỂN FOCUS VỀ GRID CHÍNH
             }
         }
 
-        private async Task SendLogToServer(string log)
+        private async void Window_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
-            if (isConnected)
+            if (e.OriginalSource is System.Windows.Controls.TextBox)
             {
-                try
-                {
-                    byte[] data = Encoding.UTF8.GetBytes(log);
-                    byte[] encryptedData = Encrypt(data, aesKey, aesIV);
+                return;
+            }
 
-                    var lengthBytes = BitConverter.GetBytes(encryptedData.Length);
-                    await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
-                    await stream.WriteAsync(encryptedData, 0, encryptedData.Length);
-                }
-                catch (Exception ex)
-                {
-                    System.Windows.MessageBox.Show($"Lỗi gửi log lên server: {ex.Message}");
-                }
+            if (isConnected && e.Key == Key.Back)
+            {
+                await SendCommandToServer("KEY:{BS}");
+            }
+        }
+
+        private async Task SendCommandToServer(string command)
+        {
+            if (!isConnected) return;
+            try
+            {
+                byte[] data = Encoding.UTF8.GetBytes(command);
+                byte[] encryptedData = Encrypt(data, aesKey, aesIV);
+
+                var lengthBytes = BitConverter.GetBytes(encryptedData.Length);
+                await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
+                await stream.WriteAsync(encryptedData, 0, encryptedData.Length);
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"Lỗi gửi lệnh: {ex.Message}");
+                Disconnect();
             }
         }
 

@@ -5,37 +5,43 @@
         SizeToContent="WidthAndHeight"
         MinHeight="450"
         MinWidth="600"
-        ResizeMode="CanResizeWithGrip">
-    <Grid Margin="10">
+        ResizeMode="CanResizeWithGrip"
+        KeyDown="Window_KeyDown">
+
+    <Grid x:Name="MainGrid" Margin="10" Focusable="True" FocusVisualStyle="{x:Null}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
+
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
             <Label Content="Server IP:" VerticalAlignment="Center" Margin="0,0,10,0"/>
-            <TextBox x:Name="txtServerIP" Width="150" Text="127.0.0.1" Margin="0,0,10,0"/>
-            <Button x:Name="btnConnect" Content="Connect" Width="100" Click="BtnConnect_Click" Margin="0,0,10,0"/>
-            <Button x:Name="btnDisconnect" Content="Disconnect" Width="100" Click="BtnDisconnect_Click" IsEnabled="False"/>
+            <TextBox x:Name="txtServerIP" Width="150" Text="127.0.0.1" Margin="0,0,10,0" FocusVisualStyle="{x:Null}"/>
+            <Button x:Name="btnConnect" Content="Connect" Width="100" Click="BtnConnect_Click" Margin="0,0,10,0" FocusVisualStyle="{x:Null}"/>
+            <Button x:Name="btnDisconnect" Content="Disconnect" Width="100" Click="BtnDisconnect_Click" IsEnabled="False" FocusVisualStyle="{x:Null}"/>
         </StackPanel>
-        <!-- Hiển thị màn hình -->
+
         <Grid Grid.Row="1">
             <Image x:Name="imageScreen"
-           Stretch="Uniform"
-           MouseLeftButtonDown="ImageScreen_MouseLeftButtonDown"
-           MouseLeftButtonUp="ImageScreen_MouseLeftButtonUp"
-           MouseRightButtonDown="ImageScreen_MouseRightButtonDown"
-           MouseRightButtonUp="ImageScreen_MouseRightButtonUp"
-           MouseMove="ImageScreen_MouseMove"
-           MouseWheel="ImageScreen_MouseWheel"
-           IsHitTestVisible="True"/>
+               Stretch="Uniform"
+               MouseLeftButtonDown="ImageScreen_MouseLeftButtonDown"
+               MouseLeftButtonUp="ImageScreen_MouseLeftButtonUp"
+               MouseRightButtonDown="ImageScreen_MouseRightButtonDown"
+               MouseRightButtonUp="ImageScreen_MouseRightButtonUp"
+               MouseMove="ImageScreen_MouseMove"
+               MouseWheel="ImageScreen_MouseWheel"
+               IsHitTestVisible="True"
+               Focusable="True"
+               FocusVisualStyle="{x:Null}"/>
             <Canvas x:Name="cursorOverlay"
-            Background="Transparent"
-            IsHitTestVisible="False"/>
+               Background="Transparent"
+               IsHitTestVisible="False"/>
         </Grid>
+
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10,0,0">
-            <TextBox x:Name="txtCommand" Width="200" Margin="0,0,10,0" KeyDown="TxtCommand_KeyDown"/>
-            <Button x:Name="btnSendKey" Content="Send Key" Width="100" Click="BtnSendKey_Click"/>
+            <TextBox x:Name="txtCommand" Width="200" Margin="0,0,10,0" KeyDown="TxtCommand_KeyDown" FocusVisualStyle="{x:Null}"/>
+            <Button x:Name="btnSendKey" Content="Send Key" Width="100" Click="BtnSendKey_Click" FocusVisualStyle="{x:Null}"/>
         </StackPanel>
     </Grid>
 </Window>

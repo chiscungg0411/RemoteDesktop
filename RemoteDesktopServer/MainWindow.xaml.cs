@@ -24,7 +24,6 @@ namespace RemoteDesktopServer
         private int sessionId = 0;
 
         #region PInvoke SendInput
-        // Vùng này định nghĩa các cấu trúc và hàm SendInput để mô phỏng input
         [DllImport("user32.dll")]
         internal static extern uint SendInput(uint nInputs, [MarshalAs(UnmanagedType.LPArray), In] INPUT[] pInputs, int cbSize);
 
@@ -75,7 +74,6 @@ namespace RemoteDesktopServer
             public ushort ParamH;
         }
 
-        // Các hằng số cho SendInput
         internal const uint INPUT_MOUSE = 0;
         internal const uint MOUSEEVENTF_MOVE = 0x0001;
         internal const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
@@ -128,7 +126,7 @@ namespace RemoteDesktopServer
             {
                 btnStart.IsEnabled = true;
                 btnStop.IsEnabled = false;
-                txtStatus.AppendText("[INFO] Server stopped.\n");
+                txtStatus.AppendText("[INFO] Server đã dừng.\n");
             });
         }
 
@@ -169,7 +167,7 @@ namespace RemoteDesktopServer
             }
             catch (Exception ex)
             {
-                txtStatus.AppendText($"[ERROR] {ex.Message}\n");
+                txtStatus.AppendText($"[LỖI] {ex.Message}\n");
                 txtStatus.ScrollToEnd();
             }
         }
@@ -186,7 +184,7 @@ namespace RemoteDesktopServer
                 {
                     btnStart.IsEnabled = false;
                     btnStop.IsEnabled = true;
-                    txtStatus.AppendText("[INFO] Server started, waiting for client...\n");
+                    txtStatus.AppendText("[INFO] Server đã khởi động, đang chờ Client...\n");
                 });
 
                 while (isRunning)
@@ -199,7 +197,7 @@ namespace RemoteDesktopServer
                         int thisSession = ++sessionId;
                         Dispatcher.Invoke(() =>
                         {
-                            txtStatus.AppendText("[INFO] Client connected!\n");
+                            txtStatus.AppendText("[INFO] Client đã kết nối!\n");
                         });
                         var sendTask = Task.Run(() => SendScreenAsync(thisSession));
                         var recvTask = Task.Run(() => ReceiveCommandsAsync(thisSession));
@@ -210,12 +208,12 @@ namespace RemoteDesktopServer
                     stream = null;
                     try { client?.Close(); } catch { }
                     client = null;
-                    Dispatcher.Invoke(() => txtStatus.AppendText("[INFO] Client disconnected or error. Waiting for new client...\n"));
+                    Dispatcher.Invoke(() => txtStatus.AppendText("[INFO] Client đã ngắt kết nối hoặc có lỗi. Đang chờ Client mới...\n"));
                 }
             }
             catch (Exception ex)
             {
-                Dispatcher.Invoke(() => txtStatus.AppendText($"[ERROR] {ex.Message}\n"));
+                Dispatcher.Invoke(() => txtStatus.AppendText($"[LỖI] {ex.Message}\n"));
                 StopServer();
             }
         }
@@ -263,7 +261,7 @@ namespace RemoteDesktopServer
                     }
                     catch { break; }
 
-                    if (bytesRead == 0) break;
+                    if (bytesRead < 4) break;
                     int length = BitConverter.ToInt32(buffer, 0);
                     var data = new byte[length];
                     int totalRead = 0;
@@ -288,6 +286,7 @@ namespace RemoteDesktopServer
 
         private void HandleCommand(string command)
         {
+            string logMessage = "";
             try
             {
                 string[] parts = command.Split(':');
@@ -300,24 +299,39 @@ namespace RemoteDesktopServer
                 switch (action)
                 {
                     case "MOVE":
-                        int x = int.Parse(values[0]);
-                        int y = int.Parse(values[1]);
+                        int x_move = int.Parse(values[0]);
+                        int y_move = int.Parse(values[1]);
                         int screenWidth = Screen.PrimaryScreen.Bounds.Width;
                         int screenHeight = Screen.PrimaryScreen.Bounds.Height;
-                        inputs[0].Data.Mouse.X = (x * 65535) / screenWidth;
-                        inputs[0].Data.Mouse.Y = (y * 65535) / screenHeight;
+                        inputs[0].Data.Mouse.X = (x_move * 65535) / screenWidth;
+                        inputs[0].Data.Mouse.Y = (y_move * 65535) / screenHeight;
                         inputs[0].Data.Mouse.Flags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
                         SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
+                        logMessage = $"Di chuyển chuột đến: ({x_move}, {y_move})";
                         break;
 
                     case "LCLICK":
                         inputs[0].Data.Mouse.Flags = MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP;
                         SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
+                        logMessage = "Nhấp chuột trái";
+                        break;
+
+                    case "LRELEASE":
+                        inputs[0].Data.Mouse.Flags = MOUSEEVENTF_LEFTUP;
+                        SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
+                        logMessage = "Thả chuột trái";
                         break;
 
                     case "RCLICK":
                         inputs[0].Data.Mouse.Flags = MOUSEEVENTF_RIGHTDOWN | MOUSEEVENTF_RIGHTUP;
                         SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
+                        logMessage = "Nhấp chuột phải";
+                        break;
+
+                    case "RRELEASE":
+                        inputs[0].Data.Mouse.Flags = MOUSEEVENTF_RIGHTUP;
+                        SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
+                        logMessage = "Thả chuột phải";
                         break;
 
                     case "SCROLL":
@@ -327,19 +341,20 @@ namespace RemoteDesktopServer
                         inputs[0].Data.Mouse.MouseData = (uint)delta;
                         inputs[0].Data.Mouse.Flags = MOUSEEVENTF_WHEEL;
                         SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
+                        logMessage = $"Cuộn chuột {(direction == "up" ? "lên" : "xuống")}";
                         break;
 
                     case "KEY":
                         string keyStr = parts[1];
                         SendKeys.SendWait(keyStr);
+                        logMessage = $"Nhận phím: {keyStr}";
                         break;
-
                 }
 
                 Dispatcher.Invoke(() =>
                 {
                     string nowStr = DateTime.Now.ToString("HH:mm:ss");
-                    txtStatus.AppendText($"[{nowStr}] Executed: {command}\n");
+                    txtStatus.AppendText($"[{nowStr}] Đã thực thi: {logMessage}\n");
                     txtStatus.ScrollToEnd();
                 });
             }
@@ -348,7 +363,7 @@ namespace RemoteDesktopServer
                 Dispatcher.Invoke(() =>
                 {
                     string nowStr = DateTime.Now.ToString("HH:mm:ss");
-                    txtStatus.AppendText($"[{nowStr}] Error executing '{command}': {ex.Message}\n");
+                    txtStatus.AppendText($"[{nowStr}] Lỗi khi thực thi '{command}': {ex.Message}\n");
                     txtStatus.ScrollToEnd();
                 });
             }
