@@ -15,12 +15,38 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
-            <Label Content="Server IP:" VerticalAlignment="Center" Margin="0,0,10,0"/>
-            <TextBox x:Name="txtServerIP" Width="150" Text="127.0.0.1" Margin="0,0,10,0" FocusVisualStyle="{x:Null}"/>
-            <Button x:Name="btnConnect" Content="Connect" Width="100" Click="BtnConnect_Click" Margin="0,0,10,0" FocusVisualStyle="{x:Null}"/>
-            <Button x:Name="btnDisconnect" Content="Disconnect" Width="100" Click="BtnDisconnect_Click" IsEnabled="False" FocusVisualStyle="{x:Null}"/>
-        </StackPanel>
+        <Grid Grid.Row="0" Margin="0,0,0,10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Label Grid.Column="0" Content="Server IP:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                <TextBox Grid.Column="1" x:Name="txtServerIP" Text="127.0.0.1" Margin="0,0,10,0" FocusVisualStyle="{x:Null}"/>
+                <Button Grid.Column="2" x:Name="btnDisconnect" Content="Disconnect" Width="100" Click="BtnDisconnect_Click" IsEnabled="False" Margin="0,5,0,5" FocusVisualStyle="{x:Null}"/>
+            </Grid>
+
+            <Grid Grid.Row="1" Margin="0,5,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Label Grid.Column="0" Content="Username:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                <TextBox Grid.Column="1" x:Name="txtUsername" Margin="0,0,10,0" FocusVisualStyle="{x:Null}"/>
+                <Label Grid.Column="2" Content="Password:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                <PasswordBox Grid.Column="3" x:Name="txtPassword" Margin="0,0,10,0"/>
+                <Button Grid.Column="4" x:Name="btnConnect" Content="Connect" Width="100" Click="BtnConnect_Click" Margin="0,5,0,5" FocusVisualStyle="{x:Null}"/>
+            </Grid>
+        </Grid>
 
         <Grid Grid.Row="1">
             <Image x:Name="imageScreen"

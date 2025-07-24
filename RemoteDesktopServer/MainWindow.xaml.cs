@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Net.Sockets;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
@@ -10,6 +11,7 @@ using System.Windows;
 using System.Windows.Forms;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Collections.Generic;
 
 namespace RemoteDesktopServer
 {
@@ -22,6 +24,14 @@ namespace RemoteDesktopServer
         private readonly byte[] aesKey = Encoding.UTF8.GetBytes("12345678901234567890123456789012");
         private readonly byte[] aesIV = Encoding.UTF8.GetBytes("1234567890123456");
         private int sessionId = 0;
+
+        // Danh sách user được phép đăng nhập (cố định)
+        private Dictionary<string, string> validUsers = new Dictionary<string, string>()
+        {
+            { "admin", "admin123" },
+            { "user1", "password1" },
+            { "user2", "password2" }
+        };
 
         #region PInvoke SendInput
         [DllImport("user32.dll")]
@@ -176,7 +186,7 @@ namespace RemoteDesktopServer
         {
             try
             {
-                listener = new TcpListener(System.Net.IPAddress.Any, 4000);
+                listener = new TcpListener(IPAddress.Any, 4000);
                 listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
                 listener.Start();
                 isRunning = true;
@@ -194,10 +204,22 @@ namespace RemoteDesktopServer
                         client = await listener.AcceptTcpClientAsync();
                         if (!isRunning || client == null) break;
                         stream = client.GetStream();
+
+                        // Xác thực người dùng trước khi tiếp tục
+                        bool authSuccess = await AuthenticateClient();
+                        if (!authSuccess)
+                        {
+                            try { stream?.Close(); } catch { }
+                            stream = null;
+                            try { client?.Close(); } catch { }
+                            client = null;
+                            continue;
+                        }
+
                         int thisSession = ++sessionId;
                         Dispatcher.Invoke(() =>
                         {
-                            txtStatus.AppendText("[INFO] Client đã kết nối!\n");
+                            txtStatus.AppendText("[INFO] Client đã kết nối thành công!\n");
                         });
                         var sendTask = Task.Run(() => SendScreenAsync(thisSession));
                         var recvTask = Task.Run(() => ReceiveCommandsAsync(thisSession));
@@ -215,6 +237,68 @@ namespace RemoteDesktopServer
             {
                 Dispatcher.Invoke(() => txtStatus.AppendText($"[LỖI] {ex.Message}\n"));
                 StopServer();
+            }
+        }
+
+        private async Task<bool> AuthenticateClient()
+        {
+            try
+            {
+                var buffer = new byte[1024];
+                int bytesRead = await stream.ReadAsync(buffer, 0, 4);
+                if (bytesRead < 4) return false;
+
+                int length = BitConverter.ToInt32(buffer, 0);
+                var data = new byte[length];
+                int totalRead = 0;
+                while (totalRead < length)
+                {
+                    bytesRead = await stream.ReadAsync(data, totalRead, length - totalRead);
+                    if (bytesRead == 0) return false;
+                    totalRead += bytesRead;
+                }
+
+                var decryptedData = Decrypt(data, aesKey, aesIV);
+                var authRequest = Encoding.UTF8.GetString(decryptedData);
+
+                if (!authRequest.StartsWith("AUTH:")) return false;
+
+                string[] authParts = authRequest.Substring(5).Split(',');
+                if (authParts.Length != 2) return false;
+
+                string username = authParts[0];
+                string password = authParts[1];
+
+                bool isValid = false;
+                if (validUsers.TryGetValue(username, out string validPassword))
+                {
+                    isValid = (password == validPassword);
+                }
+
+                string response = isValid ? "AUTH_SUCCESS" : "AUTH_FAILED";
+                Dispatcher.Invoke(() =>
+                {
+                    txtStatus.AppendText($"[AUTH] {username} đăng nhập {(isValid ? "thành công" : "thất bại")}\n");
+                    txtStatus.ScrollToEnd();
+                });
+
+                byte[] responseBytes = Encoding.UTF8.GetBytes(response);
+                byte[] encryptedResponse = Encrypt(responseBytes, aesKey, aesIV);
+
+                var lengthBytes = BitConverter.GetBytes(encryptedResponse.Length);
+                await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
+                await stream.WriteAsync(encryptedResponse, 0, encryptedResponse.Length);
+
+                return isValid;
+            }
+            catch (Exception ex)
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    txtStatus.AppendText($"[LỖI AUTH] {ex.Message}\n");
+                    txtStatus.ScrollToEnd();
+                });
+                return false;
             }
         }
 

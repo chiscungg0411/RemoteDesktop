@@ -1,22 +1,22 @@
 ﻿<Window x:Class="RemoteDesktopServer.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Remote Desktop Server" Height="187" Width="340">
+        Title="Remote Desktop Server" Height="400" Width="500">
     <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        
+
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
             <Button x:Name="btnStart" Content="Start Server" Width="100" Click="BtnStart_Click" Margin="0,0,10,0"/>
-            <Button x:Name="btnStop" Content="Stop Server" Width="100" Click="BtnStop_Click" IsEnabled="False"/>
+            <Button x:Name="btnStop" Content="Stop Server" Width="100" Click="BtnStop_Click" IsEnabled="False" Margin="0,0,10,0"/>
             <Button x:Name="btnTestCapture" Content="Test Capture" Width="100" Click="BtnTestCapture_Click"/>
         </StackPanel>
 
         <TextBox x:Name="txtStatus" Grid.Row="1" IsReadOnly="True" 
-         VerticalScrollBarVisibility="Auto" 
-         AcceptsReturn="True"
-         TextWrapping="Wrap"/>
+                 VerticalScrollBarVisibility="Auto" 
+                 AcceptsReturn="True"
+                 TextWrapping="Wrap"/>
     </Grid>
 </Window>

@@ -101,16 +101,59 @@ namespace RemoteDesktopClient
         {
             try
             {
+                string username = txtUsername.Text;
+                string password = txtPassword.Password;
+
+                if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+                {
+                    System.Windows.MessageBox.Show("Vui lòng nhập đầy đủ username và password!");
+                    return;
+                }
+
                 client = new TcpClient();
                 await client.ConnectAsync(txtServerIP.Text, 4000);
                 stream = client.GetStream();
-                isConnected = true;
 
+                // Gửi thông tin đăng nhập
+                string authData = $"AUTH:{username},{password}";
+                byte[] authBytes = Encoding.UTF8.GetBytes(authData);
+                byte[] encryptedAuth = Encrypt(authBytes, aesKey, aesIV);
+
+                var lengthBytes = BitConverter.GetBytes(encryptedAuth.Length);
+                await stream.WriteAsync(lengthBytes, 0, lengthBytes.Length);
+                await stream.WriteAsync(encryptedAuth, 0, encryptedAuth.Length);
+
+                // Đọc phản hồi xác thực
+                byte[] responseBuffer = new byte[1024];
+                int bytesRead = await stream.ReadAsync(responseBuffer, 0, 4);
+                if (bytesRead < 4) { throw new Exception("Lỗi kết nối khi đọc phản hồi"); }
+
+                int responseLength = BitConverter.ToInt32(responseBuffer, 0);
+                byte[] responseData = new byte[responseLength];
+                int totalRead = 0;
+                while (totalRead < responseLength)
+                {
+                    bytesRead = await stream.ReadAsync(responseData, totalRead, responseLength - totalRead);
+                    if (bytesRead == 0) { throw new Exception("Kết nối bị đóng khi đọc phản hồi"); }
+                    totalRead += bytesRead;
+                }
+
+                byte[] decryptedResponse = Decrypt(responseData, aesKey, aesIV);
+                string response = Encoding.UTF8.GetString(decryptedResponse);
+
+                if (response != "AUTH_SUCCESS")
+                {
+                    throw new Exception("Đăng nhập không thành công: Sai username hoặc password");
+                }
+
+                isConnected = true;
                 inputTimer.Start();
 
                 Dispatcher.Invoke(() =>
                 {
                     txtServerIP.IsEnabled = false;
+                    txtUsername.IsEnabled = false;
+                    txtPassword.IsEnabled = false;
                     btnConnect.IsEnabled = false;
                     btnDisconnect.IsEnabled = true;
                     System.Windows.MessageBox.Show("Kết nối thành công!");
@@ -136,6 +179,8 @@ namespace RemoteDesktopClient
                 Dispatcher.Invoke(() =>
                 {
                     txtServerIP.IsEnabled = true;
+                    txtUsername.IsEnabled = true;
+                    txtPassword.IsEnabled = true;
                     btnConnect.IsEnabled = true;
                     btnDisconnect.IsEnabled = false;
                     imageScreen.Source = null;
