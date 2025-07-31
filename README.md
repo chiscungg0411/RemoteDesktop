@@ -84,3 +84,13 @@ Trước khi chạy ứng dụng, hãy đảm bảo bạn đã cài đặt nhữ
 ## Tuyên bố từ chối trách nhiệm
 
 Ứng dụng này được cung cấp "nguyên trạng", không có bất kỳ bảo hành nào. Sử dụng nó có nguy cơ của riêng bạn. Các nhà phát triển không chịu trách nhiệm cho bất kỳ thiệt hại hoặc mất mát nào do việc sử dụng ứng dụng này gây ra.
+
+## Hình ảnh từ dự án
+
+### Server
+<img width="906" height="694" alt="image" src="https://github.com/user-attachments/assets/4453bcdc-e42b-4b24-87ea-7d4174ca8838" />
+
+### Client
+<img width="980" height="993" alt="image" src="https://github.com/user-attachments/assets/b18e1a31-a1c9-4d19-a687-7e055dc96892" />
+
+
