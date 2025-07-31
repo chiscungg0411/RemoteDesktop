@@ -81,10 +81,6 @@ Trước khi chạy ứng dụng, hãy đảm bảo bạn đã cài đặt nhữ
 4.  Kiểm tra kỹ lưỡng các thay đổi của bạn.
 5.  Gửi một pull request.
 
-## Giấy phép
-
-Dự án này được cấp phép theo [Tên giấy phép] - xem file [LICENSE.md](LICENSE.md) để biết chi tiết.
-
 ## Tuyên bố từ chối trách nhiệm
 
 Ứng dụng này được cung cấp "nguyên trạng", không có bất kỳ bảo hành nào. Sử dụng nó có nguy cơ của riêng bạn. Các nhà phát triển không chịu trách nhiệm cho bất kỳ thiệt hại hoặc mất mát nào do việc sử dụng ứng dụng này gây ra.
