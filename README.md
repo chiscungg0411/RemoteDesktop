@@ -88,9 +88,9 @@ Trước khi chạy ứng dụng, hãy đảm bảo bạn đã cài đặt nhữ
 ## Hình ảnh từ dự án
 
 ### Server
-<img width="906" height="694" alt="image" src="https://github.com/user-attachments/assets/4453bcdc-e42b-4b24-87ea-7d4174ca8838" />
+<img width="606" height="394" alt="image" src="https://github.com/user-attachments/assets/4453bcdc-e42b-4b24-87ea-7d4174ca8838" />
 
 ### Client
-<img width="980" height="993" alt="image" src="https://github.com/user-attachments/assets/b18e1a31-a1c9-4d19-a687-7e055dc96892" />
+<img width="680" height="693" alt="image" src="https://github.com/user-attachments/assets/b18e1a31-a1c9-4d19-a687-7e055dc96892" />
 
 
